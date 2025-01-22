@@ -169,11 +169,13 @@ class MainWindow(QMainWindow):
                    VALUES (?, ?, ?, ?, ?)'''
         self.execute_db_query(query, product_data)
 
-    def update_product(self, product_data, code):
+    def update_product_in_db(self, product_data, code):
         query = '''UPDATE products
-                   SET name = ?, description = ?, category = ?, location = ?
+                   SET name = ?, description = ?, code=?, category = ?, location = ?
                    WHERE code = ?'''
-        self.execute_db_query(query, product_data + (code,))
+        
+        # Asegúrate de que estamos pasando los parámetros correctamente
+        self.execute_db_query(query, (*product_data, code))
 
     def create_product(self):
         dialog = ProductFormDialog(self, 'Crear Producto')
@@ -191,7 +193,7 @@ class MainWindow(QMainWindow):
                 dialog = ProductFormDialog(self, 'Modificar Producto', product_data=result)
                 if dialog.exec_():
                     updated_data = dialog.get_product_data()
-                    self.update_product(updated_data, code)
+                    self.update_product_in_db(updated_data, code)
                     QMessageBox.information(self, 'Éxito', 'Producto modificado exitosamente')
             else:
                 QMessageBox.warning(self, 'Error', 'Producto no encontrado')
