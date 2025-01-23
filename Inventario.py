@@ -1,6 +1,6 @@
 import sys
 import sqlite3
-from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QLabel, QInputDialog, QMessageBox, QWidget, QFileDialog, QDateEdit
+from PyQt5.QtWidgets import QGridLayout, QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QLabel, QInputDialog, QMessageBox, QWidget, QFileDialog, QDateEdit
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QPixmap
 import pandas as pd
@@ -10,31 +10,36 @@ class LoginWindow(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Entrada")
-        self.setGeometry(100, 100, 350, 200)
+        self.setGeometry(100, 100, 350, 250)
         self.setStyleSheet("""
             QDialog {
-                background-color: #f0f0f0;
+                background-color: #fafafa;
+                border-radius: 10px;
             }
             QLabel {
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
                 color: #003366;
             }
             QLineEdit {
-                padding: 5px;
-                font-size: 14px;
-                border-radius: 5px;
+                padding: 10px;
+                font-size: 16px;
+                border-radius: 8px;
                 border: 1px solid #cccccc;
+                margin-bottom: 15px;
             }
             QPushButton {
-                background-color: #003366;
+                background-color: #0066cc;
                 color: white;
-                padding: 8px 16px;
-                border-radius: 5px;
-                font-size: 14px;
+                padding: 10px 20px;
+                border-radius: 8px;
+                font-size: 16px;
             }
             QPushButton:hover {
-                background-color: #004488;
+                background-color: #004d99;
+            }
+            QPushButton:pressed {
+                background-color: #003366;
             }
         """)
         self.setWindowIcon(QIcon('PJF.ico'))
@@ -74,25 +79,25 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Sistema de inventario v1')
-        self.setGeometry(100, 100, 900, 600)
+        self.setGeometry(100, 100, 900, 700)
         self.create_database()
-        self.setWindowIcon(QIcon('Iconos/PJF.ico'))  # Asignar icono a la ventana principal
+        self.setWindowIcon(QIcon('Iconos/PJF.ico')) 
         self.initUI()
 
     def initUI(self):
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #e6e6e6;
+                background-color: #f4f4f4;
             }
             QPushButton {
                 background-color: #005b96;
                 color: white;
-                padding: 10px 20px;
-                border-radius: 8px;
-                font-size: 14px;
-                min-width: 140px;
+                padding: 12px 20px;
+                border-radius: 10px;
+                font-size: 16px;
+                min-width: 180px;
                 text-align: center;
-                margin: 5px;
+                margin: 10px;
             }
             QPushButton:hover {
                 background-color: #004080;
@@ -101,48 +106,46 @@ class MainWindow(QMainWindow):
                 background-color: #003060;
             }
             #exitButton {
-                background-color: #ff3333;  /* Rojo */
-                color: white;  /* Texto blanco */
+                background-color: #ff3333;
+                color: white;
             }
             #exitButton:hover {
-                background-color: #ff6666;  /* Rojo más claro al pasar el mouse */
+                background-color: #ff6666;
             }
             #exitButton:pressed {
-                background-color: #cc0000;  /* Rojo oscuro al presionar */
+                background-color: #cc0000;
             }
         """)
 
         self.layout = QVBoxLayout()
 
-        # Logo en el centro de la ventana principal
+        # Logo en el centro de la ventana
         logo_label = QLabel(self)
-        pixmap = QPixmap('Imagenes/PJF.png')  # Asegúrate de tener un archivo de logo
+        pixmap = QPixmap('Imagenes/PJF.png')  # Asegúrate de tener el logo
         logo_label.setPixmap(pixmap)
         logo_label.setAlignment(Qt.AlignCenter)
 
-        # Botones de acciones con un tamaño más pequeño y mejor alineados
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)  # Espaciado entre botones
+        # Botones de acciones en una cuadrícula
+        button_layout = QGridLayout()
+        button_layout.setSpacing(20)
 
         self.create_button = self.create_button_with_icon('Crear Producto', 'Iconos/Crear.ico', self.create_product)
         self.update_button = self.create_button_with_icon('Modificar Producto', 'Iconos/Actualizar.ico', self.update_product)
         self.search_button = self.create_button_with_icon('Buscar Producto', 'Iconos/Buscar.ico', self.search_product)
         self.delete_button = self.create_button_with_icon('Eliminar Producto', 'Iconos/Eliminar.ico', self.delete_product)
         self.export_button = self.create_button_with_icon('Generar Reporte', 'Iconos/Generar.ico', self.export_report)
-        self.exit_button = self.create_button_with_icon('Salir', 'Iconos/Salir.ico', self.exit_application)  # Botón para salir
-
-        # Aplicamos el ID de estilo para el botón de salir
+        self.exit_button = self.create_button_with_icon('Salir', 'Iconos/Salir.ico', self.exit_application)
         self.exit_button.setObjectName("exitButton")
 
-        button_layout.addWidget(self.create_button)
-        button_layout.addWidget(self.update_button)
-        button_layout.addWidget(self.search_button)
-        button_layout.addWidget(self.delete_button)
-        button_layout.addWidget(self.export_button)
-        button_layout.addWidget(self.exit_button)  # Añadimos el botón de salir
+        button_layout.addWidget(self.create_button, 0, 0)
+        button_layout.addWidget(self.update_button, 0, 1)
+        button_layout.addWidget(self.search_button, 1, 0)
+        button_layout.addWidget(self.delete_button, 1, 1)
+        button_layout.addWidget(self.export_button, 2, 0, 1, 2)  # Ocupa dos columnas
+        button_layout.addWidget(self.exit_button, 3, 0, 1, 2)  # Ocupa dos columnas
 
-        self.layout.addWidget(logo_label)  # Añadimos el logo al layout
-        self.layout.addLayout(button_layout)  # Añadimos los botones a la ventana principal
+        self.layout.addWidget(logo_label)  # Añadimos el logo
+        self.layout.addLayout(button_layout)  # Añadimos los botones
 
         # Contenedor principal
         self.main_widget = QWidget()
@@ -153,6 +156,7 @@ class MainWindow(QMainWindow):
         button = QPushButton(text)
         button.setIcon(QIcon(icon_name))  # Asignar icono
         button.clicked.connect(action)
+        button.setMinimumHeight(50)  # Aseguramos que los botones tengan una altura mínima adecuada
         return button
 
     def exit_application(self):
@@ -418,7 +422,7 @@ class SearchProductDialog(QDialog):
 
         self.table = QTableWidget(self)
         self.table.setColumnCount(8)
-        self.table.setHorizontalHeaderLabels(["Nombre", "Descripción", "Código", "Categoría", "Ubicación", "Proveedor", "Fecha Entrada", "Cantidad"])
+        self.table.setHorizontalHeaderLabels(["Nombre", "Descripción", "Código", "Categoría", "Ubicación", "Proveedor", "Fecha Alta", "Cantidad Disponible"])
 
         layout.addWidget(self.search_input)
         layout.addWidget(self.search_button)
@@ -481,20 +485,40 @@ class ExportReportDialog(QDialog):
     def export_inventory_report(self):
         query = 'SELECT * FROM products'
         df = pd.read_sql_query(query, self.parent().conn)
+
+        # Cambiar los encabezados a español y asegurarnos de que hay 9 columnas
+        df.columns = ["ID", "Nombre", "Descripción", "Código", "Categoría", "Ubicación", "Proveedor", "Fecha de Entrada", "Cantidad"]
+
         filename, _ = QFileDialog.getSaveFileName(self, "Guardar Reporte", "", "Excel Files (*.xlsx)")
 
         if filename:
-            df.to_excel(filename, index=False)
-            QMessageBox.information(self, 'Éxito', 'Reporte de Inventario General generado exitosamente.')
+           df.to_excel(filename, index=False)
+           QMessageBox.information(self, 'Éxito', 'Reporte de Inventario General generado exitosamente.')
+
 
     def export_movements_report(self):
-        query = 'SELECT * FROM product_movements'
+        # Modificar la consulta para incluir el nombre del producto
+        query = '''SELECT pm.code, p.name, pm.area, pm.requester, pm.date_out, pm.quantity
+               FROM product_movements pm
+               JOIN products p ON pm.code = p.code'''
+
         df = pd.read_sql_query(query, self.parent().conn)
+
+        # Cambiar los encabezados a español
+        df.columns = ["Código", "Nombre del Producto", "Área", "Solicitante", "Fecha de Salida", "Cantidad"]
+
         filename, _ = QFileDialog.getSaveFileName(self, "Guardar Reporte", "", "Excel Files (*.xlsx)")
 
+        # Asegurarse de que el usuario haya seleccionado un archivo
         if filename:
-            df.to_excel(filename, index=False)
-            QMessageBox.information(self, 'Éxito', 'Reporte de Movimientos generado exitosamente.')
+            try:
+                df.to_excel(filename, index=False)
+                QMessageBox.information(self, 'Éxito', 'Reporte de Movimientos generado exitosamente.')
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Ocurrió un error al generar el reporte: {str(e)}')
+        else:
+            QMessageBox.warning(self, 'Cancelado', 'No se seleccionó ningún archivo para guardar.')
+
 
 # --- Ejecutar la aplicación ---
 if __name__ == '__main__':
@@ -505,3 +529,6 @@ if __name__ == '__main__':
         window = MainWindow()
         window.show()
         sys.exit(app.exec_())
+        
+        
+        
