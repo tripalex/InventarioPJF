@@ -166,6 +166,8 @@ class MainWindow(QMainWindow):
         try:
             self.conn = sqlite3.connect('products.db')
             self.cursor = self.conn.cursor()
+
+            # Crear la tabla de productos con la nueva columna "unidad_medida"
             self.cursor.execute('''CREATE TABLE IF NOT EXISTS products (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                                     name TEXT,
@@ -175,8 +177,11 @@ class MainWindow(QMainWindow):
                                     location TEXT,
                                     supplier TEXT,
                                     entry_date TEXT,
-                                    quantity INTEGER
+                                    quantity INTEGER,
+                                    unidad_medida TEXT  -- Nueva columna
                                 )''')
+            
+            # Crear la tabla de movimientos de productos si no existe
             self.cursor.execute('''CREATE TABLE IF NOT EXISTS product_movements (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                                     code TEXT,
@@ -185,10 +190,12 @@ class MainWindow(QMainWindow):
                                     date_out TEXT,
                                     quantity INTEGER
                                 )''')
+            
             self.conn.commit()
         except sqlite3.Error as e:
             QMessageBox.critical(self, 'Error de Conexión', f'Error al crear la base de datos: {e}')
             self.close()
+
 
     def execute_db_query(self, query, params=()):
         try:
@@ -199,13 +206,13 @@ class MainWindow(QMainWindow):
             #QMessageBox.critical(self, 'Error de Base de Datos', f'Error al ejecutar la consulta: {e}')
 
     def insert_product(self, product_data):
-        query = '''INSERT INTO products (name, description, code, category, location, supplier, entry_date, quantity)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)'''
+        query = '''INSERT INTO products (name, description, code, category, location, supplier, entry_date, quantity,unidad_medida)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'''
         self.execute_db_query(query, product_data)
     
     def update_product_in_db(self, product_data, code):
         query = '''UPDATE products
-                   SET name = ?, description = ?, code=?, category = ?, location = ?, supplier=?, entry_date=?, quantity=?
+                   SET name = ?, description = ?, code=?, category = ?, location = ?, supplier=?, entry_date=?, quantity=?,unidad_medida=?
                    WHERE code = ?'''
         
         # Asegúrate de que estamos pasando los parámetros correctamente
@@ -313,7 +320,7 @@ class ProductFormDialog(QDialog):
                 background-color: #004d99;
             }
         """)
-        
+
         self.product_data = product_data
         self.initUI()
 
@@ -331,6 +338,10 @@ class ProductFormDialog(QDialog):
         self.entry_date_input = QDateEdit(self)
         self.entry_date_input.setDate(QDate.currentDate())
         self.quantity_input = QLineEdit(self)
+        
+        # Nueva lista de unidades de medida
+        self.unit_input = QComboBox(self)
+        self.unit_input.addItems(["Pieza", "Caja", "Metro", "Millar"])  # Opciones de unidades de medida
 
         # Label para mostrar el estado del código
         self.code_status_label = QLabel(self)
@@ -351,6 +362,7 @@ class ProductFormDialog(QDialog):
         layout.addRow("Proveedor", self.supplier_input)
         layout.addRow("Fecha de Entrada", self.entry_date_input)
         layout.addRow("Cantidad", self.quantity_input)
+        layout.addRow("Unidad de Medida", self.unit_input)  # Agregar campo de unidad de medida
 
         button_layout = QHBoxLayout()
 
@@ -379,6 +391,7 @@ class ProductFormDialog(QDialog):
             self.supplier_input.setText(self.product_data[6])
             self.entry_date_input.setDate(QDate.fromString(self.product_data[7], "yyyy-MM-dd"))
             self.quantity_input.setText(str(self.product_data[8]))  # Rellenar la cantidad
+            self.unit_input.setCurrentText(self.product_data[9])  # Rellenar la unidad de medida
 
             # Bloquear campos si el código ya existe
             self.code_input.setEnabled(False)  # Bloquear el código
@@ -387,6 +400,20 @@ class ProductFormDialog(QDialog):
             self.supplier_input.setEnabled(True)
             self.entry_date_input.setEnabled(False)
             self.quantity_input.setEnabled(False)
+
+    def get_product_data(self):
+        """Este método devuelve los datos ingresados del formulario."""
+        return (
+            self.name_input.text(),
+            self.description_input.text(),
+            self.code_input.text(),
+            self.category_input.currentText(),
+            self.location_input.text(),
+            self.supplier_input.text(),
+            self.entry_date_input.date().toString("yyyy-MM-dd"),
+            int(self.quantity_input.text()),
+            self.unit_input.currentText()  # Obtener la unidad de medida
+        )
 
     def check_code_availability(self):
         code = self.code_input.text()
@@ -398,12 +425,12 @@ class ProductFormDialog(QDialog):
         result = self.parent().cursor.fetchone()
 
         if result:
-            # Si el código existe, mostrar icono amarillo (utilizado) y bloquear campos
+            # Si el código existe, mostrar mensaje en amarillo (utilizado) y cargar los datos existentes
             self.code_status_label.setText("Código Utilizado")
             self.code_status_label.setStyleSheet("background-color: yellow; color: black;")
             self.load_existing_product_data(result)
         else:
-            # Si el código no existe, mostrar icono verde (disponible)
+            # Si el código no existe, mostrar mensaje verde (disponible)
             self.code_status_label.setText("Código Disponible")
             self.code_status_label.setStyleSheet("background-color: green; color: white;")
 
@@ -416,6 +443,7 @@ class ProductFormDialog(QDialog):
         self.supplier_input.setText(result[6])
         self.entry_date_input.setDate(QDate.fromString(result[7], "yyyy-MM-dd"))
         self.quantity_input.setText(str(result[8]))  # Rellenar la cantidad
+        self.unit_input.setCurrentText(result[9])  # Rellenar la unidad de medida
 
         # Bloquear campos
         self.name_input.setEnabled(False)
@@ -450,9 +478,10 @@ class ProductFormDialog(QDialog):
             result = self.parent().cursor.fetchone()
 
             if result:
-                # Si el código ya existe, actualizamos la cantidad
+                # Si el código ya existe, actualizamos la cantidad y la unidad de medida
                 new_quantity = result[8] + quantity  # Asegúrate de que la posición 8 corresponde a "quantity"
-                self.parent().cursor.execute('UPDATE products SET quantity = ? WHERE code = ?', (new_quantity, code))
+                self.parent().cursor.execute('UPDATE products SET quantity = ?, unidad_medida = ? WHERE code = ?',
+                                             (new_quantity, self.unit_input.currentText(), code))
                 self.parent().conn.commit()  # Confirmamos los cambios en la base de datos
                 QMessageBox.information(self, 'Éxito', 'Cantidad actualizada exitosamente.')
             else:
@@ -465,11 +494,12 @@ class ProductFormDialog(QDialog):
                     self.location_input.text(),
                     self.supplier_input.text(),
                     self.entry_date_input.date().toString("yyyy-MM-dd"),
-                    quantity
+                    quantity,
+                    self.unit_input.currentText()  # Guardar la unidad de medida
                 )
 
                 # Intentamos insertar el nuevo producto solo si no existe previamente
-                self.parent().cursor.execute('INSERT INTO products (name, description, code, category, location, supplier, entry_date, quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', product_data)
+                self.parent().cursor.execute('INSERT INTO products (name, description, code, category, location, supplier, entry_date, quantity, unidad_medida) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', product_data)
                 self.parent().conn.commit()  # Confirmamos los cambios en la base de datos
                 QMessageBox.information(self, 'Éxito', 'Producto creado exitosamente.')
 
@@ -487,18 +517,6 @@ class ProductFormDialog(QDialog):
             # Aseguramos que no queden transacciones pendientes
             self.parent().conn.commit()  # Confirmar siempre los cambios finales
             self.accept()
-
-    def get_product_data(self):
-        return (
-            self.name_input.text(),
-            self.description_input.text(),
-            self.code_input.text(),
-            self.category_input.currentText(),
-            self.location_input.text(),
-            self.supplier_input.text(),
-            self.entry_date_input.date().toString("yyyy-MM-dd"),
-            int(self.quantity_input.text())
-        )
 
 # --- Dialogo para Buscar Productos ---
 class SearchProductDialog(QDialog):
