@@ -195,7 +195,8 @@ class MainWindow(QMainWindow):
             self.cursor.execute(query, params)
             self.conn.commit()
         except sqlite3.Error as e:
-            QMessageBox.critical(self, 'Error de Base de Datos', f'Error al ejecutar la consulta: {e}')
+            print(str(e))
+            #QMessageBox.critical(self, 'Error de Base de Datos', f'Error al ejecutar la consulta: {e}')
 
     def insert_product(self, product_data):
         query = '''INSERT INTO products (name, description, code, category, location, supplier, entry_date, quantity)
@@ -215,8 +216,7 @@ class MainWindow(QMainWindow):
         if dialog.exec_():
             product_data = dialog.get_product_data()
             self.insert_product(product_data)
-            QMessageBox.information(self, 'Éxito', 'Producto creado exitosamente')
-         
+            #QMessageBox.information(self, 'Éxito', 'Producto creado exitosamente')      
 
     def update_product(self):
         code, ok = self.get_code_from_user('Modificar Producto')
@@ -313,7 +313,7 @@ class ProductFormDialog(QDialog):
                 background-color: #004d99;
             }
         """)
-
+        
         self.product_data = product_data
         self.initUI()
 
@@ -323,28 +323,29 @@ class ProductFormDialog(QDialog):
         self.name_input = QLineEdit(self)
         self.description_input = QLineEdit(self)
         self.code_input = QLineEdit(self)
+        self.code_input.setPlaceholderText("Ingrese código del producto")
         self.category_input = QComboBox(self)
-        self.category_input.addItems(["Papelería", "Computacion", "Muebles","Herramienta" ])  # Añadimos categorías predeterminadas
+        self.category_input.addItems(["Papelería", "Computación", "Muebles", "Herramienta"])  # Categorías predeterminadas
         self.location_input = QLineEdit(self)
         self.supplier_input = QLineEdit(self)
         self.entry_date_input = QDateEdit(self)
         self.entry_date_input.setDate(QDate.currentDate())
         self.quantity_input = QLineEdit(self)
 
-        if self.product_data:
-            # Rellenar los campos con la información existente del producto
-            self.name_input.setText(self.product_data[1])
-            self.description_input.setText(self.product_data[2])
-            self.code_input.setText(self.product_data[3])
-            self.category_input.setCurrentText(self.product_data[4])
-            self.location_input.setText(self.product_data[5])
-            self.supplier_input.setText(self.product_data[6])
-            self.entry_date_input.setDate(QDate.fromString(self.product_data[7], "yyyy-MM-dd"))
-            self.quantity_input.setText(str(self.product_data[8]))  # Rellenar la cantidad
+        # Label para mostrar el estado del código
+        self.code_status_label = QLabel(self)
+        self.code_status_label.setAlignment(Qt.AlignCenter)
+        self.code_status_label.setStyleSheet("""
+            QLabel {
+                font-size: 14px;
+                padding: 5px;
+            }
+        """)
 
         layout.addRow("Nombre", self.name_input)
         layout.addRow("Descripción", self.description_input)
         layout.addRow("Código", self.code_input)
+        layout.addRow(self.code_status_label)  # Mostrar el estado del código
         layout.addRow("Categoría", self.category_input)
         layout.addRow("Ubicación", self.location_input)
         layout.addRow("Proveedor", self.supplier_input)
@@ -365,18 +366,127 @@ class ProductFormDialog(QDialog):
         layout.addRow(button_layout)
         self.setLayout(layout)
 
+        # Conectar el evento de cambio de texto en el código para verificar disponibilidad
+        self.code_input.editingFinished.connect(self.check_code_availability)
+
+        if self.product_data:
+            # Rellenar los campos con la información existente del producto
+            self.name_input.setText(self.product_data[1])
+            self.description_input.setText(self.product_data[2])
+            self.code_input.setText(self.product_data[3])
+            self.category_input.setCurrentText(self.product_data[4])
+            self.location_input.setText(self.product_data[5])
+            self.supplier_input.setText(self.product_data[6])
+            self.entry_date_input.setDate(QDate.fromString(self.product_data[7], "yyyy-MM-dd"))
+            self.quantity_input.setText(str(self.product_data[8]))  # Rellenar la cantidad
+
+            # Bloquear campos si el código ya existe
+            self.code_input.setEnabled(False)  # Bloquear el código
+            self.category_input.setEnabled(True)
+            self.location_input.setEnabled(True)
+            self.supplier_input.setEnabled(True)
+            self.entry_date_input.setEnabled(False)
+            self.quantity_input.setEnabled(False)
+
+    def check_code_availability(self):
+        code = self.code_input.text()
+
+        if not code:
+            return  # Si el código está vacío no hacemos nada
+
+        self.parent().cursor.execute('SELECT * FROM products WHERE code = ?', (code,))
+        result = self.parent().cursor.fetchone()
+
+        if result:
+            # Si el código existe, mostrar icono amarillo (utilizado) y bloquear campos
+            self.code_status_label.setText("Código Utilizado")
+            self.code_status_label.setStyleSheet("background-color: yellow; color: black;")
+            self.load_existing_product_data(result)
+        else:
+            # Si el código no existe, mostrar icono verde (disponible)
+            self.code_status_label.setText("Código Disponible")
+            self.code_status_label.setStyleSheet("background-color: green; color: white;")
+
+    def load_existing_product_data(self, result):
+        # Rellenar los campos con los datos existentes del producto
+        self.name_input.setText(result[1])
+        self.description_input.setText(result[2])
+        self.category_input.setCurrentText(result[4])
+        self.location_input.setText(result[5])
+        self.supplier_input.setText(result[6])
+        self.entry_date_input.setDate(QDate.fromString(result[7], "yyyy-MM-dd"))
+        self.quantity_input.setText(str(result[8]))  # Rellenar la cantidad
+
+        # Bloquear campos
+        self.name_input.setEnabled(False)
+        self.description_input.setEnabled(False)
+        self.code_input.setEnabled(False)
+        self.category_input.setEnabled(False)
+        self.location_input.setEnabled(False)
+        self.supplier_input.setEnabled(False)
+        self.entry_date_input.setEnabled(False)
+
     def save_product(self):
-        product_data = (
-            self.name_input.text(),
-            self.description_input.text(),
-            self.code_input.text(),
-            self.category_input.currentText(),
-            self.location_input.text(),
-            self.supplier_input.text(),
-            self.entry_date_input.date().toString("yyyy-MM-dd"),
-            int(self.quantity_input.text())
-        )
-        self.accept()
+        # Validar que el código no esté vacío
+        if not self.code_input.text():
+            QMessageBox.warning(self, 'Error', 'El código es obligatorio.')
+            return
+
+        # Validar la cantidad (debe ser un número entero positivo)
+        try:
+            quantity = int(self.quantity_input.text())
+            if quantity <= 0:
+                raise ValueError("La cantidad debe ser un número positivo.")
+        except ValueError as e:
+            QMessageBox.warning(self, 'Error', str(e))
+            return
+
+        # Obtener el código ingresado
+        code = self.code_input.text()
+
+        try:
+            # Verificamos si ya existe un producto con ese código
+            self.parent().cursor.execute('SELECT * FROM products WHERE code = ?', (code,))
+            result = self.parent().cursor.fetchone()
+
+            if result:
+                # Si el código ya existe, actualizamos la cantidad
+                new_quantity = result[8] + quantity  # Asegúrate de que la posición 8 corresponde a "quantity"
+                self.parent().cursor.execute('UPDATE products SET quantity = ? WHERE code = ?', (new_quantity, code))
+                self.parent().conn.commit()  # Confirmamos los cambios en la base de datos
+                QMessageBox.information(self, 'Éxito', 'Cantidad actualizada exitosamente.')
+            else:
+                # Si el código no existe, lo insertamos como un nuevo producto
+                product_data = (
+                    self.name_input.text(),
+                    self.description_input.text(),
+                    self.code_input.text(),
+                    self.category_input.currentText(),
+                    self.location_input.text(),
+                    self.supplier_input.text(),
+                    self.entry_date_input.date().toString("yyyy-MM-dd"),
+                    quantity
+                )
+
+                # Intentamos insertar el nuevo producto solo si no existe previamente
+                self.parent().cursor.execute('INSERT INTO products (name, description, code, category, location, supplier, entry_date, quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', product_data)
+                self.parent().conn.commit()  # Confirmamos los cambios en la base de datos
+                QMessageBox.information(self, 'Éxito', 'Producto creado exitosamente.')
+
+        except sqlite3.IntegrityError as e:
+            # Este error se lanza si por alguna razón intentamos insertar un código duplicado
+            print(f"Error de Integridad: {e}")
+            QMessageBox.warning(self, 'Error', 'El código ya está registrado en la base de datos.')
+
+        except Exception as e:
+            # Capturamos cualquier otro error
+            print(f"Error inesperado: {e}")
+            QMessageBox.warning(self, 'Error', 'Ha ocurrido un error inesperado.')
+
+        finally:
+            # Aseguramos que no queden transacciones pendientes
+            self.parent().conn.commit()  # Confirmar siempre los cambios finales
+            self.accept()
 
     def get_product_data(self):
         return (
