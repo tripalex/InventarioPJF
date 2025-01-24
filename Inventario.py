@@ -78,7 +78,7 @@ class LoginWindow(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Sistema de inventario v1')
+        self.setWindowTitle('Sistema de inventario v1.0')
         self.setGeometry(100, 100, 900, 700)
         self.create_database()
         self.setWindowIcon(QIcon('Iconos/PJF.ico')) 
@@ -124,15 +124,34 @@ class MainWindow(QMainWindow):
         pixmap = QPixmap('Imagenes/PJF.png')  # Asegúrate de tener el logo
         logo_label.setPixmap(pixmap)
         logo_label.setAlignment(Qt.AlignCenter)
+        
+        # Agregar texto debajo del logo
+        text_label = QLabel("Sistema de Inventario", self)
+        text_label.setAlignment(Qt.AlignCenter)
+        text_label.setStyleSheet("""
+            QLabel {
+                font-size: 30px;
+                font-weight: bold;
+                color: #0066cc;
+                margin-top: 5px;
+                margin-bottom:10px
+            }
+        """)
+        
+        version_label = QLabel("Versión 1.0", self)
+        version_label.setAlignment(Qt.AlignRight)  # Alinearlo a la derecha
+        version_label.setStyleSheet("font-size: 14px; color: #888; padding: 10px;")  # Estilo
+
 
         # Botones de acciones en una cuadrícula
         button_layout = QGridLayout()
         button_layout.setSpacing(20)
 
-        self.create_button = self.create_button_with_icon('Crear Producto', 'Iconos/Crear.ico', self.create_product)
+      
+        self.create_button = self.create_button_with_icon('Entrada Producto', 'Iconos/Crear.ico', self.create_product)
         self.update_button = self.create_button_with_icon('Modificar Producto', 'Iconos/Actualizar.ico', self.update_product)
         self.search_button = self.create_button_with_icon('Buscar Producto', 'Iconos/Buscar.ico', self.search_product)
-        self.delete_button = self.create_button_with_icon('Eliminar Producto', 'Iconos/Eliminar.ico', self.delete_product)
+        self.delete_button = self.create_button_with_icon('Salida Producto', 'Iconos/Eliminar.ico', self.delete_product)
         self.export_button = self.create_button_with_icon('Generar Reporte', 'Iconos/Generar.ico', self.export_report)
         self.exit_button = self.create_button_with_icon('Salir', 'Iconos/Salir.ico', self.exit_application)
         self.exit_button.setObjectName("exitButton")
@@ -145,6 +164,8 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.exit_button, 3, 0, 1, 2)  # Ocupa dos columnas
 
         self.layout.addWidget(logo_label)  # Añadimos el logo
+        self.layout.addWidget(text_label)  #Añadimos el titulo
+        self.layout.addWidget(version_label) #Añadimos el versionado
         self.layout.addLayout(button_layout)  # Añadimos los botones
 
         # Contenedor principal
@@ -219,7 +240,7 @@ class MainWindow(QMainWindow):
         self.execute_db_query(query, (*product_data, code))
 
     def create_product(self):
-        dialog = ProductFormDialog(self, 'Crear Producto')
+        dialog = ProductFormDialog(self, 'Entrada Producto')
         if dialog.exec_():
             product_data = dialog.get_product_data()
             self.insert_product(product_data)
@@ -245,7 +266,7 @@ class MainWindow(QMainWindow):
 
     def delete_product(self):
         # Pedir el código del producto que se quiere eliminar
-        code, ok = self.get_code_from_user('Eliminar Producto')
+        code, ok = self.get_code_from_user('Salida Producto')
         if ok:
             # Verificar si el producto existe en la base de datos
             self.cursor.execute('SELECT * FROM products WHERE code = ?', (code,))
@@ -535,43 +556,108 @@ class SearchProductDialog(QDialog):
                 font-size: 14px;
             }
         """)
-
         self.initUI()
 
     def initUI(self):
         layout = QVBoxLayout()
 
+        # Cuadro de texto para buscar por código o nombre
         self.search_input = QLineEdit(self)
-        self.search_input.setPlaceholderText("Buscar producto por nombre o código")
+        self.search_input.setPlaceholderText("Buscar por nombre o código...")
         self.search_input.textChanged.connect(self.update_search_results)
 
-        self.search_button = QPushButton("Buscar")
-        self.search_button.clicked.connect(self.search_product)
+        # Filtro de categoría
+        self.category_filter = QComboBox(self)
+        self.category_filter.addItem("Todas las Categorías")
+        self.category_filter.addItem("Papelería")
+        self.category_filter.addItem("Computación")
+        self.category_filter.addItem("Muebles")
+        self.category_filter.addItem("Herramienta")
+        self.category_filter.currentIndexChanged.connect(self.update_search_results)
 
+        # Tabla para mostrar los productos
         self.table = QTableWidget(self)
-        self.table.setColumnCount(8)
-        self.table.setHorizontalHeaderLabels(["Nombre", "Descripción", "Código", "Categoría", "Ubicación", "Proveedor", "Fecha Alta", "Cantidad Disponible"])
+        self.table.setColumnCount(9)  # 9 columnas para mostrar todos los detalles
+        self.table.setHorizontalHeaderLabels(
+            ["Nombre", "Descripción", "Código", "Categoría", "Ubicación", "Proveedor", 
+             "Fecha Alta", "Cantidad Disponible", "Unidad de Medida"])  # Nueva columna
 
         layout.addWidget(self.search_input)
-        layout.addWidget(self.search_button)
+        layout.addWidget(self.category_filter)
         layout.addWidget(self.table)
 
         self.setLayout(layout)
 
-    def search_product(self):
+    def update_search_results(self):
+        # Obtenemos el texto ingresado en el cuadro de búsqueda
         search_term = self.search_input.text()
 
-        self.parent().cursor.execute('SELECT * FROM products WHERE name LIKE ? OR code LIKE ?', (f'%{search_term}%', f'%{search_term}%'))
+        # Obtenemos la categoría seleccionada en el filtro
+        selected_category = self.category_filter.currentText()
+
+        # Si no se ha ingresado texto en el cuadro de búsqueda, realizamos la búsqueda de acuerdo a la categoría
+        if not search_term and selected_category == "Todas las Categorías":
+            self.search_product()
+        elif not search_term:  # Si no hay texto de búsqueda pero se ha seleccionado una categoría
+            self.search_product_by_category(selected_category)
+        else:
+            # Realizamos la búsqueda con el término de búsqueda y la categoría seleccionada
+            self.search_product_by_name_or_code(search_term, selected_category)
+
+    def search_product(self):
+        # Realizamos la búsqueda sin filtrar por categoría ni por búsqueda de texto
+        self.parent().cursor.execute('''
+            SELECT name, description, code, category, location, supplier, entry_date, quantity, unidad_medida 
+            FROM products''')
+        
         results = self.parent().cursor.fetchall()
 
         self.table.setRowCount(len(results))
 
         for row, result in enumerate(results):
-            for col, value in enumerate(result[1:]):  # Excluyendo el ID
+            for col, value in enumerate(result):  # Incluimos "Unidad de Medida" en los resultados
                 self.table.setItem(row, col, QTableWidgetItem(str(value)))
 
-    def update_search_results(self):
-        self.search_product()
+    def search_product_by_category(self, category):
+        # Realizamos la búsqueda filtrando por la categoría seleccionada
+        self.parent().cursor.execute('''
+            SELECT name, description, code, category, location, supplier, entry_date, quantity, unidad_medida 
+            FROM products WHERE category = ?''', (category,))
+        
+        results = self.parent().cursor.fetchall()
+
+        self.table.setRowCount(len(results))
+
+        for row, result in enumerate(results):
+            for col, value in enumerate(result):  # Incluimos "Unidad de Medida" en los resultados
+                self.table.setItem(row, col, QTableWidgetItem(str(value)))
+
+    def search_product_by_name_or_code(self, search_term, category):
+        # Realizamos la búsqueda filtrando por nombre o código y por la categoría seleccionada (si corresponde)
+        query = '''
+            SELECT name, description, code, category, location, supplier, entry_date, quantity, unidad_medida 
+            FROM products
+            WHERE (name LIKE ? OR code LIKE ?)
+        '''
+        
+        # Si hay una categoría seleccionada distinta de "Todas las Categorías", la filtramos también
+        if category != "Todas las Categorías":
+            query += ' AND category = ?'
+
+        # Ejecutamos la consulta con los parámetros
+        if category != "Todas las Categorías":
+            self.parent().cursor.execute(query, (f'%{search_term}%', f'%{search_term}%', category))
+        else:
+            self.parent().cursor.execute(query, (f'%{search_term}%', f'%{search_term}%',))
+
+        results = self.parent().cursor.fetchall()
+
+        self.table.setRowCount(len(results))
+
+        for row, result in enumerate(results):
+            for col, value in enumerate(result):  # Incluimos "Unidad de Medida" en los resultados
+                self.table.setItem(row, col, QTableWidgetItem(str(value)))
+
 
 # --- Diálogo para Generar Reportes ---
 class ExportReportDialog(QDialog):
@@ -615,7 +701,7 @@ class ExportReportDialog(QDialog):
         df = pd.read_sql_query(query, self.parent().conn)
 
         # Cambiar los encabezados a español y asegurarnos de que hay 9 columnas
-        df.columns = ["ID", "Nombre", "Descripción", "Código", "Categoría", "Ubicación", "Proveedor", "Fecha de Entrada", "Cantidad"]
+        df.columns = ["ID", "Nombre", "Descripción", "Código", "Categoría", "Ubicación", "Proveedor", "Fecha de Entrada", "Cantidad","Unidad Medida"]
 
         filename, _ = QFileDialog.getSaveFileName(self, "Guardar Reporte", "", "Excel Files (*.xlsx)")
 
@@ -626,14 +712,14 @@ class ExportReportDialog(QDialog):
 
     def export_movements_report(self):
         # Modificar la consulta para incluir el nombre del producto
-        query = '''SELECT pm.code, p.name, pm.area, pm.requester, pm.date_out, pm.quantity
+        query = '''SELECT pm.code, p.name, pm.area, pm.requester, pm.date_out, pm.quantity,p.unidad_medida
                FROM product_movements pm
                JOIN products p ON pm.code = p.code'''
 
         df = pd.read_sql_query(query, self.parent().conn)
 
         # Cambiar los encabezados a español
-        df.columns = ["Código", "Nombre del Producto", "Área", "Solicitante", "Fecha de Salida", "Cantidad"]
+        df.columns = ["Código", "Nombre del Producto", "Área", "Solicitante", "Fecha de Salida", "Cantidad","Unidad Medida"]
 
         filename, _ = QFileDialog.getSaveFileName(self, "Guardar Reporte", "", "Excel Files (*.xlsx)")
 
