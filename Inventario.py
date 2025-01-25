@@ -1,6 +1,6 @@
 import sys
 import sqlite3
-from PyQt5.QtWidgets import QGridLayout, QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QLabel, QInputDialog, QMessageBox, QWidget, QFileDialog, QDateEdit
+from PyQt5.QtWidgets import QCalendarWidget, QGridLayout, QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QLabel, QInputDialog, QMessageBox, QWidget, QFileDialog, QDateEdit
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QPixmap
 import pandas as pd
@@ -9,7 +9,6 @@ import pandas as pd
 class LoginWindow(QDialog):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Entrada")
         self.setGeometry(100, 100, 350, 250)
         self.setStyleSheet("""
             QDialog {
@@ -126,7 +125,7 @@ class MainWindow(QMainWindow):
         logo_label.setAlignment(Qt.AlignCenter)
         
         # Agregar texto debajo del logo
-        text_label = QLabel("Sistema de Inventario", self)
+        text_label = QLabel("Control de Inventario", self)
         text_label.setAlignment(Qt.AlignCenter)
         text_label.setStyleSheet("""
             QLabel {
@@ -139,9 +138,12 @@ class MainWindow(QMainWindow):
         """)
         
         version_label = QLabel("Versión 1.0", self)
-        version_label.setAlignment(Qt.AlignRight)  # Alinearlo a la derecha
-        version_label.setStyleSheet("font-size: 14px; color: #888; padding: 10px;")  # Estilo
+        version_label.setAlignment(Qt.AlignLeft)  # Alinearlo a la izquierda
+        version_label.setStyleSheet("font-size: 14px; color: #888; padding: 10px; margin-top:10px;")  # Estilo
 
+        area_label = QLabel("Recursos Materiales", self)
+        area_label.setAlignment(Qt.AlignLeft)  # Alinearlo a la izquierda
+        area_label.setStyleSheet("font-size: 14px; color: #888; padding: 10px; margin-top:0px; margin-bottom:10px;")  # Estilo
 
         # Botones de acciones en una cuadrícula
         button_layout = QGridLayout()
@@ -166,6 +168,7 @@ class MainWindow(QMainWindow):
         self.layout.addWidget(logo_label)  # Añadimos el logo
         self.layout.addWidget(text_label)  #Añadimos el titulo
         self.layout.addWidget(version_label) #Añadimos el versionado
+        self.layout.addWidget(area_label) #Añadimos el area del inventario
         self.layout.addLayout(button_layout)  # Añadimos los botones
 
         # Contenedor principal
@@ -658,7 +661,78 @@ class SearchProductDialog(QDialog):
             for col, value in enumerate(result):  # Incluimos "Unidad de Medida" en los resultados
                 self.table.setItem(row, col, QTableWidgetItem(str(value)))
 
+#--- Ventana para seleccionar el rango de fechas ---
+class SelectDateRangeDialog(QDialog):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle("Seleccionar Rango de Fechas")
+        self.setGeometry(200, 200, 400, 200)
 
+        self.initUI()
+
+    def initUI(self):
+        layout = QVBoxLayout()
+
+        # Crear las listas desplegables para mes y año
+        self.month_combo = QComboBox(self)
+        self.month_combo.addItems([
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ])
+        self.month_combo.setCurrentIndex(QDate.currentDate().month() - 1)  # Preseleccionar el mes actual
+
+        self.year_combo = QComboBox(self)
+        current_year = QDate.currentDate().year()
+        # Agregar un rango de años (por ejemplo, los últimos 10 años)
+        self.year_combo.addItems([str(year) for year in range(current_year - 5, current_year + 1)])
+        self.year_combo.setCurrentIndex(self.year_combo.count() - 1)  # Preseleccionar el año actual
+
+        # Etiquetas para mostrar las selecciones
+        self.date_range_label = QLabel("Selecciona el mes y el año para el reporte:", self)
+        layout.addWidget(self.date_range_label)
+        layout.addWidget(self.month_combo)
+        layout.addWidget(self.year_combo)
+
+        # Botones para aplicar el rango o generar el reporte completo
+        button_layout = QHBoxLayout()
+        self.apply_button = QPushButton("Aplicar Rango de Fechas", self)
+        self.apply_button.clicked.connect(self.apply_date_range)
+
+        self.full_report_button = QPushButton("Generar Reporte Completo", self)
+        self.full_report_button.clicked.connect(self.generate_full_report)
+
+        button_layout.addWidget(self.apply_button)
+        button_layout.addWidget(self.full_report_button)
+
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+
+    def apply_date_range(self):
+        # Obtener el mes y el año seleccionados
+        selected_month = self.month_combo.currentIndex() + 1  # Los meses van de 1 a 12
+        selected_year = self.year_combo.currentText()
+
+        # Generar las fechas de inicio y fin del mes seleccionado
+        start_date = f"{selected_year}-{selected_month:02d}-01"
+        # Para obtener el último día del mes, vamos a crear una fecha con el próximo mes y restar un día
+        next_month = selected_month % 12 + 1
+        next_month_year = selected_year if selected_month < 12 else str(int(selected_year) + 1)
+        end_date = f"{next_month_year}-{next_month:02d}-01"
+        end_date = QDate.fromString(end_date, "yyyy-MM-dd").addDays(-1).toString("yyyy-MM-dd")
+
+        # Llamar al método de generación de reporte con las fechas
+        self.parent().generate_report(start_date, end_date)
+
+        # Cerrar la ventana de selección de fechas
+        self.accept()
+
+    def generate_full_report(self):
+        # Generar el reporte sin restricción de fechas
+        self.parent().generate_report(None, None)
+
+        # Cerrar la ventana de selección de fechas
+        self.accept()
 # --- Diálogo para Generar Reportes ---
 class ExportReportDialog(QDialog):
     def __init__(self, parent):
@@ -689,12 +763,25 @@ class ExportReportDialog(QDialog):
         self.export_inventory_button.clicked.connect(self.export_inventory_report)
 
         self.export_movements_button = QPushButton("Generar Historial de Movimientos")
-        self.export_movements_button.clicked.connect(self.export_movements_report)
+        self.export_movements_button.clicked.connect(self.open_date_range_dialog)
 
         layout.addWidget(self.export_inventory_button)
         layout.addWidget(self.export_movements_button)
 
         self.setLayout(layout)
+
+    def open_date_range_dialog(self):
+        # Abrir el diálogo de selección de mes y año
+        date_range_dialog = SelectDateRangeDialog(self)
+        date_range_dialog.exec_()
+
+    def generate_report(self, start_date, end_date):
+        if start_date and end_date:
+            # Generar el reporte de movimientos en el rango de fechas seleccionado
+            self.export_movements_report(start_date, end_date)
+        else:
+            # Si no se seleccionó un rango de fechas, generar el reporte completo
+            self.export_movements_report()
 
     def export_inventory_report(self):
         query = 'SELECT * FROM products'
@@ -709,21 +796,28 @@ class ExportReportDialog(QDialog):
            df.to_excel(filename, index=False)
            QMessageBox.information(self, 'Éxito', 'Reporte de Inventario General generado exitosamente.')
 
-
-    def export_movements_report(self):
+    def export_movements_report(self, start_date=None, end_date=None):
         # Modificar la consulta para incluir el nombre del producto
-        query = '''SELECT pm.code, p.name, pm.area, pm.requester, pm.date_out, pm.quantity,p.unidad_medida
-               FROM product_movements pm
-               JOIN products p ON pm.code = p.code'''
+        if start_date and end_date:
+            query = '''SELECT pm.code, p.name, pm.area, pm.requester, pm.date_out, pm.quantity, p.unidad_medida
+                       FROM product_movements pm
+                       JOIN products p ON pm.code = p.code
+                       WHERE pm.date_out BETWEEN ? AND ?'''
 
-        df = pd.read_sql_query(query, self.parent().conn)
+            params = (start_date, end_date)
+        else:
+            query = '''SELECT pm.code, p.name, pm.area, pm.requester, pm.date_out, pm.quantity, p.unidad_medida
+                       FROM product_movements pm
+                       JOIN products p ON pm.code = p.code'''
+            params = ()
+
+        df = pd.read_sql_query(query, self.parent().conn, params=params)
 
         # Cambiar los encabezados a español
-        df.columns = ["Código", "Nombre del Producto", "Área", "Solicitante", "Fecha de Salida", "Cantidad","Unidad Medida"]
+        df.columns = ["Código", "Nombre del Producto", "Área", "Solicitante", "Fecha de Salida", "Cantidad", "Unidad Medida"]
 
         filename, _ = QFileDialog.getSaveFileName(self, "Guardar Reporte", "", "Excel Files (*.xlsx)")
 
-        # Asegurarse de que el usuario haya seleccionado un archivo
         if filename:
             try:
                 df.to_excel(filename, index=False)
@@ -732,7 +826,6 @@ class ExportReportDialog(QDialog):
                 QMessageBox.critical(self, 'Error', f'Ocurrió un error al generar el reporte: {str(e)}')
         else:
             QMessageBox.warning(self, 'Cancelado', 'No se seleccionó ningún archivo para guardar.')
-
 
 # --- Ejecutar la aplicación ---
 if __name__ == '__main__':
