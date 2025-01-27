@@ -1,6 +1,6 @@
 import sys
 import sqlite3
-from PyQt5.QtWidgets import QCalendarWidget, QGridLayout, QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QLabel, QInputDialog, QMessageBox, QWidget, QFileDialog, QDateEdit
+from PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QAction,QCalendarWidget, QGridLayout, QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QLabel, QInputDialog, QDialogButtonBox,QMessageBox, QWidget, QFileDialog, QDateEdit
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QPixmap
 import pandas as pd
@@ -280,30 +280,62 @@ class MainWindow(QMainWindow):
                 quantity, ok_quantity = QInputDialog.getInt(self, 'Cantidad', 'Ingrese la cantidad a retirar:')
                 
                 if ok_quantity and quantity > 0 and quantity <= result[8]:
-                    # Solicitar al usuario el área, solicitante y la fecha de salida
+                    # Solicitar al usuario el área, solicitante
                     area, ok_area = QInputDialog.getText(self, 'Área', 'Ingrese el área solicitante:')
                     requester, ok_requester = QInputDialog.getText(self, 'Solicitante', 'Ingrese el nombre del solicitante:')
-                    date_out, ok_date_out = QInputDialog.getText(self, 'Fecha de Salida', 'Ingrese la fecha de salida (YYYY-MM-DD):')
 
-                    if ok_area and ok_requester and ok_date_out:
-                        # Insertar un registro en el historial de movimientos (tabla product_movements)
-                        query = '''INSERT INTO product_movements (code, area, requester, date_out, quantity)
-                                   VALUES (?, ?, ?, ?, ?)'''
-                        self.execute_db_query(query, (code, area, requester, date_out, quantity))
-                        
-                        # Restar la cantidad del inventario
-                        new_quantity = result[8] - quantity
-                        self.cursor.execute('UPDATE products SET quantity = ? WHERE code = ?', (new_quantity, code))
-                        self.conn.commit()
-                        
-                        # Verificar si la cantidad llega a 0 y eliminar el producto si es necesario
-                        if new_quantity == 0:
-                            self.cursor.execute('DELETE FROM products WHERE code = ?', (code,))
-                            self.conn.commit()
+                    # Crear un cuadro de diálogo para seleccionar la fecha
+                    date_dialog = QDialog(self)
+                    date_dialog.setWindowTitle('Seleccione la Fecha de Salida')
 
-                        QMessageBox.information(self, 'Éxito', 'Producto eliminado y movimiento registrado exitosamente')
+                    # Crear un QDateEdit para seleccionar la fecha
+                    date_out_edit = QDateEdit(date_dialog)
+                    date_out_edit.setDate(QDate.currentDate())  # Fecha por defecto: hoy
+                    date_out_edit.setDisplayFormat('yyyy-MM-dd')  # Formato de fecha
+                    date_out_edit.setCalendarPopup(True)  # Habilitar calendario emergente
+
+                    # Agregar el QDateEdit y botones al cuadro de diálogo
+                    layout = QVBoxLayout(date_dialog)
+                    layout.addWidget(date_out_edit)
+
+                    button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                    layout.addWidget(button_box)
+
+                    # Conectar señales de los botones
+                    button_box.accepted.connect(date_dialog.accept)
+                    button_box.rejected.connect(date_dialog.reject)
+
+                    # Mostrar el cuadro de diálogo y esperar la respuesta
+                    if date_dialog.exec_() == QDialog.Accepted:
+                        date_out = date_out_edit.date().toString('yyyy-MM-dd')
+                        if ok_area and ok_requester and date_out:
+                            try:
+                                # Insertar un registro en el historial de movimientos (tabla product_movements)
+                                query = '''INSERT INTO product_movements (code, area, requester, date_out, quantity)
+                                           VALUES (?, ?, ?, ?, ?)'''
+                                self.execute_db_query(query, (code, area, requester, date_out, quantity))
+                                
+                                # Restar la cantidad del inventario
+                                new_quantity = result[8] - quantity
+                                self.cursor.execute('UPDATE products SET quantity = ? WHERE code = ?', (new_quantity, code))
+                                self.conn.commit()
+                                
+                                # Verificar si la cantidad llega a 0 y eliminar el producto si es necesario
+                                if new_quantity == 0:
+                                    confirm = QMessageBox.question(self, 'Confirmación', '¿Está seguro de que desea eliminar el producto?',
+                                                                  QMessageBox.Yes | QMessageBox.No)
+                                    if confirm == QMessageBox.Yes:
+                                        self.cursor.execute('DELETE FROM products WHERE code = ?', (code,))
+                                        self.conn.commit()
+
+                                QMessageBox.information(self, 'Éxito', 'Producto eliminado y movimiento registrado exitosamente')
+                            except Exception as e:
+                                QMessageBox.critical(self, 'Error', f'Ocurrió un error al procesar la solicitud: {e}')
+                        else:
+                            QMessageBox.warning(self, 'Error de Entrada', 'Debe ingresar todos los datos para el historial de movimiento.')
                     else:
-                        QMessageBox.warning(self, 'Error de Entrada', 'Debe ingresar todos los datos para el historial de movimiento.')
+                        QMessageBox.warning(self, 'Error de Fecha', 'Debe seleccionar una fecha válida.')
+
                 else:
                     QMessageBox.warning(self, 'Error de Cantidad', 'Cantidad inválida. Asegúrese de que sea menor o igual a la cantidad disponible.')
             else:
