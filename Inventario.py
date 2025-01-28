@@ -2,7 +2,7 @@ import sys
 import sqlite3
 from PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QAction,QCalendarWidget, QGridLayout, QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QLabel, QInputDialog, QDialogButtonBox,QMessageBox, QWidget, QFileDialog, QDateEdit
 from PyQt5.QtCore import Qt, QDate
-from PyQt5.QtGui import QIcon, QPixmap
+from PyQt5.QtGui import QIcon, QPixmap, QColor
 import pandas as pd
 
 # --- Ventana de Login ---
@@ -202,7 +202,8 @@ class MainWindow(QMainWindow):
                                     supplier TEXT,
                                     entry_date TEXT,
                                     quantity INTEGER,
-                                    unidad_medida TEXT  -- Nueva columna
+                                    unidad_medida TEXT,
+                                    is_available BOOLEAN DEFAULT 1
                                 )''')
             
             # Crear la tabla de movimientos de productos si no existe
@@ -318,17 +319,15 @@ class MainWindow(QMainWindow):
                                 # Restar la cantidad del inventario
                                 new_quantity = result[8] - quantity
                                 self.cursor.execute('UPDATE products SET quantity = ? WHERE code = ?', (new_quantity, code))
-                                self.conn.commit()
                                 
-                                # Verificar si la cantidad llega a 0 y eliminar el producto si es necesario
+                                # Si la cantidad llega a 0, se marca como no disponible (sin eliminar el producto)
                                 if new_quantity == 0:
-                                    confirm = QMessageBox.question(self, 'Confirmación', '¿Está seguro de que desea eliminar el producto?',
-                                                                  QMessageBox.Yes | QMessageBox.No)
-                                    if confirm == QMessageBox.Yes:
-                                        self.cursor.execute('DELETE FROM products WHERE code = ?', (code,))
-                                        self.conn.commit()
+                                    self.cursor.execute('UPDATE products SET is_available = ? WHERE code = ?', (0, code))
+                                    self.conn.commit()  # Guardamos los cambios
 
-                                QMessageBox.information(self, 'Éxito', 'Producto eliminado y movimiento registrado exitosamente')
+                                self.conn.commit()  # Confirmamos los cambios en la base de datos
+                                
+                                QMessageBox.information(self, 'Éxito', 'Producto actualizado y movimiento registrado exitosamente')
                             except Exception as e:
                                 QMessageBox.critical(self, 'Error', f'Ocurrió un error al procesar la solicitud: {e}')
                         else:
@@ -519,8 +518,8 @@ class ProductFormDialog(QDialog):
         # Validar la cantidad (debe ser un número entero positivo)
         try:
             quantity = int(self.quantity_input.text())
-            if quantity <= 0:
-                raise ValueError("La cantidad debe ser un número positivo.")
+            if quantity < 0:
+                raise ValueError("La cantidad no puede ser negativa.")
         except ValueError as e:
             QMessageBox.warning(self, 'Error', str(e))
             return
@@ -536,12 +535,14 @@ class ProductFormDialog(QDialog):
             if result:
                 # Si el código ya existe, actualizamos la cantidad y la unidad de medida
                 new_quantity = result[8] + quantity  # Asegúrate de que la posición 8 corresponde a "quantity"
-                self.parent().cursor.execute('UPDATE products SET quantity = ?, unidad_medida = ? WHERE code = ?',
-                                             (new_quantity, self.unit_input.currentText(), code))
+                is_available = 1 if new_quantity > 0 else 0  # Marcarlo como disponible si la cantidad es mayor que 0
+                self.parent().cursor.execute('UPDATE products SET quantity = ?, unidad_medida = ?, is_available = ? WHERE code = ?',
+                                             (new_quantity, self.unit_input.currentText(), is_available, code))
                 self.parent().conn.commit()  # Confirmamos los cambios en la base de datos
                 QMessageBox.information(self, 'Éxito', 'Cantidad actualizada exitosamente.')
             else:
                 # Si el código no existe, lo insertamos como un nuevo producto
+                is_available = 1 if quantity > 0 else 0  # Si la cantidad es mayor que 0, lo marcamos como disponible
                 product_data = (
                     self.name_input.text(),
                     self.description_input.text(),
@@ -551,28 +552,26 @@ class ProductFormDialog(QDialog):
                     self.supplier_input.text(),
                     self.entry_date_input.date().toString("yyyy-MM-dd"),
                     quantity,
-                    self.unit_input.currentText()  # Guardar la unidad de medida
+                    self.unit_input.currentText(),  # Guardar la unidad de medida
+                    is_available  # Guardar el estado de disponibilidad
                 )
 
-                # Intentamos insertar el nuevo producto solo si no existe previamente
-                self.parent().cursor.execute('INSERT INTO products (name, description, code, category, location, supplier, entry_date, quantity, unidad_medida) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', product_data)
+                self.parent().cursor.execute('INSERT INTO products (name, description, code, category, location, supplier, entry_date, quantity, unidad_medida, is_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', product_data)
                 self.parent().conn.commit()  # Confirmamos los cambios en la base de datos
                 QMessageBox.information(self, 'Éxito', 'Producto creado exitosamente.')
 
         except sqlite3.IntegrityError as e:
-            # Este error se lanza si por alguna razón intentamos insertar un código duplicado
             print(f"Error de Integridad: {e}")
             QMessageBox.warning(self, 'Error', 'El código ya está registrado en la base de datos.')
 
         except Exception as e:
-            # Capturamos cualquier otro error
             print(f"Error inesperado: {e}")
             QMessageBox.warning(self, 'Error', 'Ha ocurrido un error inesperado.')
 
         finally:
-            # Aseguramos que no queden transacciones pendientes
             self.parent().conn.commit()  # Confirmar siempre los cambios finales
             self.accept()
+
 
 # --- Dialogo para Buscar Productos ---
 class SearchProductDialog(QDialog):
@@ -641,36 +640,50 @@ class SearchProductDialog(QDialog):
 
     def search_product(self):
         # Realizamos la búsqueda sin filtrar por categoría ni por búsqueda de texto
-        self.parent().cursor.execute('''
-            SELECT name, description, code, category, location, supplier, entry_date, quantity, unidad_medida 
-            FROM products''')
+        self.parent().cursor.execute('''SELECT name, description, code, category, location, supplier, entry_date, quantity, unidad_medida, is_available 
+                                        FROM products''')
         
         results = self.parent().cursor.fetchall()
 
         self.table.setRowCount(len(results))
 
         for row, result in enumerate(results):
-            for col, value in enumerate(result):  # Incluimos "Unidad de Medida" en los resultados
+            for col, value in enumerate(result[:9]):  # Incluimos "Unidad de Medida" en los resultados
                 self.table.setItem(row, col, QTableWidgetItem(str(value)))
+
+            # Verificamos si el producto está disponible
+            if result[7] == 0:  # quantity == 0
+                # Cambiar el color de fondo a gris si no está disponible
+                for col in range(9):
+                    item = self.table.item(row, col)
+                    item.setBackground(QColor(200, 200, 200))  # Gris claro
+                self.table.setItem(row, 7, QTableWidgetItem("No Disponible"))  # Mostrar "No Disponible" en la columna de cantidad
 
     def search_product_by_category(self, category):
         # Realizamos la búsqueda filtrando por la categoría seleccionada
-        self.parent().cursor.execute('''
-            SELECT name, description, code, category, location, supplier, entry_date, quantity, unidad_medida 
-            FROM products WHERE category = ?''', (category,))
+        self.parent().cursor.execute('''SELECT name, description, code, category, location, supplier, entry_date, quantity, unidad_medida, is_available 
+                                        FROM products WHERE category = ?''', (category,))
         
         results = self.parent().cursor.fetchall()
 
         self.table.setRowCount(len(results))
 
         for row, result in enumerate(results):
-            for col, value in enumerate(result):  # Incluimos "Unidad de Medida" en los resultados
+            for col, value in enumerate(result[:9]):  # Incluimos "Unidad de Medida" en los resultados
                 self.table.setItem(row, col, QTableWidgetItem(str(value)))
+
+            # Verificamos si el producto está disponible
+            if result[7] == 0:  # quantity == 0
+                # Cambiar el color de fondo a gris si no está disponible
+                for col in range(9):
+                    item = self.table.item(row, col)
+                    item.setBackground(QColor(200, 200, 200))  # Gris claro
+                self.table.setItem(row, 7, QTableWidgetItem("No Disponible"))  # Mostrar "No Disponible" en la columna de cantidad
 
     def search_product_by_name_or_code(self, search_term, category):
         # Realizamos la búsqueda filtrando por nombre o código y por la categoría seleccionada (si corresponde)
         query = '''
-            SELECT name, description, code, category, location, supplier, entry_date, quantity, unidad_medida 
+            SELECT name, description, code, category, location, supplier, entry_date, quantity, unidad_medida, is_available 
             FROM products
             WHERE (name LIKE ? OR code LIKE ?)
         '''
@@ -690,8 +703,16 @@ class SearchProductDialog(QDialog):
         self.table.setRowCount(len(results))
 
         for row, result in enumerate(results):
-            for col, value in enumerate(result):  # Incluimos "Unidad de Medida" en los resultados
+            for col, value in enumerate(result[:9]):  # Incluimos "Unidad de Medida" en los resultados
                 self.table.setItem(row, col, QTableWidgetItem(str(value)))
+
+            # Verificamos si el producto está disponible
+            if result[7] == 0:  # quantity == 0
+                # Cambiar el color de fondo a gris si no está disponible
+                for col in range(9):
+                    item = self.table.item(row, col)
+                    item.setBackground(QColor(200, 200, 200))  # Gris claro
+                self.table.setItem(row, 7, QTableWidgetItem("No Disponible"))  # Mostrar "No Disponible" en la columna de cantidad
 
 #--- Ventana para seleccionar el rango de fechas ---
 class SelectDateRangeDialog(QDialog):
