@@ -396,7 +396,7 @@ class ProductFormDialog(QDialog):
         
         # Nueva lista de unidades de medida
         self.unit_input = QComboBox(self)
-        self.unit_input.addItems(["Pieza", "Caja", "Metro", "Millar"])  # Opciones de unidades de medida
+        self.unit_input.addItems(["Pieza","Caja", "Metro", "Millar","Block","Bola","Paquete","Rollo","Frasco","Tubo","Sobre","Juego"])  # Opciones de unidades de medida
 
         # Label para mostrar el estado del código
         self.code_status_label = QLabel(self)
