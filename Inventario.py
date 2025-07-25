@@ -1,6 +1,6 @@
 import sys
 import sqlite3
-from PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QAction,QCalendarWidget, QGridLayout, QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QLabel, QInputDialog, QDialogButtonBox,QMessageBox, QWidget, QFileDialog, QDateEdit
+from PyQt5.QtWidgets import QSpinBox,QCompleter,QSystemTrayIcon, QMenu, QAction,QCalendarWidget, QGridLayout, QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QLabel, QInputDialog, QDialogButtonBox,QMessageBox, QWidget, QFileDialog, QDateEdit
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QIcon, QPixmap, QColor
 import pandas as pd
@@ -269,76 +269,8 @@ class MainWindow(QMainWindow):
         dialog.exec_()
 
     def delete_product(self):
-        # Pedir el código del producto que se quiere eliminar
-        code, ok = self.get_code_from_user('Salida Producto')
-        if ok:
-            # Verificar si el producto existe en la base de datos
-            self.cursor.execute('SELECT * FROM products WHERE code = ?', (code,))
-            result = self.cursor.fetchone()
-            
-            if result:
-                # Solicitar al usuario la cantidad a retirar
-                quantity, ok_quantity = QInputDialog.getInt(self, 'Cantidad', 'Ingrese la cantidad a retirar:')
-                
-                if ok_quantity and quantity > 0 and quantity <= result[8]:
-                    # Solicitar al usuario el área, solicitante
-                    area, ok_area = QInputDialog.getText(self, 'Área', 'Ingrese el área solicitante:')
-                    requester, ok_requester = QInputDialog.getText(self, 'Solicitante', 'Ingrese el nombre del solicitante:')
-
-                    # Crear un cuadro de diálogo para seleccionar la fecha
-                    date_dialog = QDialog(self)
-                    date_dialog.setWindowTitle('Seleccione la Fecha de Salida')
-
-                    # Crear un QDateEdit para seleccionar la fecha
-                    date_out_edit = QDateEdit(date_dialog)
-                    date_out_edit.setDate(QDate.currentDate())  # Fecha por defecto: hoy
-                    date_out_edit.setDisplayFormat('yyyy-MM-dd')  # Formato de fecha
-                    date_out_edit.setCalendarPopup(True)  # Habilitar calendario emergente
-
-                    # Agregar el QDateEdit y botones al cuadro de diálogo
-                    layout = QVBoxLayout(date_dialog)
-                    layout.addWidget(date_out_edit)
-
-                    button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-                    layout.addWidget(button_box)
-
-                    # Conectar señales de los botones
-                    button_box.accepted.connect(date_dialog.accept)
-                    button_box.rejected.connect(date_dialog.reject)
-
-                    # Mostrar el cuadro de diálogo y esperar la respuesta
-                    if date_dialog.exec_() == QDialog.Accepted:
-                        date_out = date_out_edit.date().toString('yyyy-MM-dd')
-                        if ok_area and ok_requester and date_out:
-                            try:
-                                # Insertar un registro en el historial de movimientos (tabla product_movements)
-                                query = '''INSERT INTO product_movements (code, area, requester, date_out, quantity)
-                                           VALUES (?, ?, ?, ?, ?)'''
-                                self.execute_db_query(query, (code, area, requester, date_out, quantity))
-                                
-                                # Restar la cantidad del inventario
-                                new_quantity = result[8] - quantity
-                                self.cursor.execute('UPDATE products SET quantity = ? WHERE code = ?', (new_quantity, code))
-                                
-                                # Si la cantidad llega a 0, se marca como no disponible (sin eliminar el producto)
-                                if new_quantity == 0:
-                                    self.cursor.execute('UPDATE products SET is_available = ? WHERE code = ?', (0, code))
-                                    self.conn.commit()  # Guardamos los cambios
-
-                                self.conn.commit()  # Confirmamos los cambios en la base de datos
-                                
-                                QMessageBox.information(self, 'Éxito', 'Producto actualizado y movimiento registrado exitosamente')
-                            except Exception as e:
-                                QMessageBox.critical(self, 'Error', f'Ocurrió un error al procesar la solicitud: {e}')
-                        else:
-                            QMessageBox.warning(self, 'Error de Entrada', 'Debe ingresar todos los datos para el historial de movimiento.')
-                    else:
-                        QMessageBox.warning(self, 'Error de Fecha', 'Debe seleccionar una fecha válida.')
-
-                else:
-                    QMessageBox.warning(self, 'Error de Cantidad', 'Cantidad inválida. Asegúrese de que sea menor o igual a la cantidad disponible.')
-            else:
-                QMessageBox.warning(self, 'Error', 'Producto no encontrado')
+        dialog = ProductExitDialog(self)
+        dialog.exec_()
 
     def export_report(self):
         dialog = ExportReportDialog(self)
@@ -891,6 +823,148 @@ class ExportReportDialog(QDialog):
                 QMessageBox.critical(self, 'Error', f'Ocurrió un error al generar el reporte: {str(e)}')
         else:
             QMessageBox.warning(self, 'Cancelado', 'No se seleccionó ningún archivo para guardar.')
+
+class ProductExitDialog(QDialog):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.conn = parent.conn
+        self.cursor = parent.cursor
+        self.setWindowTitle("Salida múltiple de productos")
+        self.setGeometry(300, 300, 800, 450)
+
+        self.products_cache = {}  # código -> dict(producto) para autocompletar y validación
+        self.selected_products = {}
+
+        self.initUI()
+        self.load_products_for_autocomplete()
+
+    def initUI(self):
+        layout = QVBoxLayout()
+
+        # Área y solicitante
+        area_layout = QHBoxLayout()
+        area_layout.addWidget(QLabel("Área:"))
+        self.area_input = QLineEdit()
+        area_layout.addWidget(self.area_input)
+
+        area_layout.addWidget(QLabel("Solicitante:"))
+        self.requester_input = QLineEdit()
+        area_layout.addWidget(self.requester_input)
+
+        layout.addLayout(area_layout)
+
+        # Campo para ingresar producto con autocompletado
+        product_layout = QHBoxLayout()
+        self.product_input = QLineEdit()
+        self.product_input.setPlaceholderText("Código o nombre del producto")
+        product_layout.addWidget(self.product_input)
+
+        self.add_button = QPushButton("Agregar")
+        self.add_button.clicked.connect(self.add_product)
+        product_layout.addWidget(self.add_button)
+
+        layout.addLayout(product_layout)
+
+        # Tabla productos para salida
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["Código", "Nombre", "Cantidad Disponible", "Unidad", "Cantidad a Salir"])
+        layout.addWidget(self.table)
+
+        # Botón registrar salida
+        self.exit_button = QPushButton("Registrar Salida")
+        self.exit_button.clicked.connect(self.register_exit)
+        layout.addWidget(self.exit_button)
+
+        self.setLayout(layout)
+
+    def load_products_for_autocomplete(self):
+        # Carga todos los productos disponibles para autocompletar
+        self.cursor.execute("SELECT code, name, quantity, unidad_medida FROM products WHERE is_available=1")
+        products = self.cursor.fetchall()
+
+        self.products_cache = {}
+        items = []
+        for code, name, qty, unit in products:
+            display = f"{code} - {name}"
+            items.append(display)
+            self.products_cache[display] = {
+                'code': code,
+                'name': name,
+                'quantity': qty,
+                'unit': unit
+            }
+        completer = QCompleter(items)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.product_input.setCompleter(completer)
+
+    def add_product(self):
+        text = self.product_input.text().strip()
+        if text not in self.products_cache:
+            QMessageBox.warning(self, "Producto no encontrado", "Por favor seleccione un producto válido del autocompletado.")
+            return
+
+        product = self.products_cache[text]
+        code = product['code']
+
+        if code in self.selected_products:
+            QMessageBox.warning(self, "Producto ya agregado", "Este producto ya está en la lista.")
+            return
+
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+
+        self.table.setItem(row, 0, QTableWidgetItem(product['code']))
+        self.table.setItem(row, 1, QTableWidgetItem(product['name']))
+        self.table.setItem(row, 2, QTableWidgetItem(str(product['quantity'])))
+        self.table.setItem(row, 3, QTableWidgetItem(product['unit']))
+
+        spin = QSpinBox()
+        spin.setRange(1, product['quantity'])
+        spin.setValue(1)
+        self.table.setCellWidget(row, 4, spin)
+
+        self.selected_products[code] = product
+        self.product_input.clear()
+
+    def register_exit(self):
+        area = self.area_input.text().strip()
+        requester = self.requester_input.text().strip()
+        if not area or not requester:
+            QMessageBox.warning(self, "Error", "Debe ingresar área y solicitante.")
+            return
+
+        if self.table.rowCount() == 0:
+            QMessageBox.warning(self, "Error", "No hay productos para salida.")
+            return
+
+        try:
+            for row in range(self.table.rowCount()):
+                code = self.table.item(row, 0).text()
+                qty_disponible = int(self.table.item(row, 2).text())
+                spin = self.table.cellWidget(row, 4)
+                qty_salida = spin.value()
+
+                if qty_salida > qty_disponible:
+                    QMessageBox.warning(self, "Error", f"La cantidad a salir para {code} supera la disponible.")
+                    return
+
+                nueva_cant = qty_disponible - qty_salida
+                is_disp = 1 if nueva_cant > 0 else 0
+
+                self.cursor.execute('UPDATE products SET quantity=?, is_available=? WHERE code=?',
+                                    (nueva_cant, is_disp, code))
+
+                self.cursor.execute('''INSERT INTO product_movements (code, area, requester, date_out, quantity)
+                                       VALUES (?, ?, ?, DATE('now'), ?)''',
+                                    (code, area, requester, qty_salida))
+
+            self.conn.commit()
+            QMessageBox.information(self, "Salida registrada", "La salida de productos se registró correctamente.")
+            self.accept()
+
+        except Exception as e:
+            self.conn.rollback()
+            QMessageBox.critical(self, "Error", f"Ocurrió un error: {e}")
 
 # --- Ejecutar la aplicación ---
 if __name__ == '__main__':
