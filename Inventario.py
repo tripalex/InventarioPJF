@@ -319,7 +319,7 @@ class ProductFormDialog(QDialog):
         self.code_input = QLineEdit(self)
         self.code_input.setPlaceholderText("Ingrese código del producto")
         self.category_input = QComboBox(self)
-        self.category_input.addItems(["Papelería", "Computación", "Muebles", "Herramienta"])  # Categorías predeterminadas
+        self.category_input.addItems(["Papelería","Construcción","Mobiliario", "Herramienta","Plomería / Fontanería","Seguridad Industrial / Proteccion Civil","Tecnología / Electrónica","Limpieza / Mantenimiento","Repuestos / Consumibles", "Otra"])  # Categorías predeterminadas
         self.location_input = QLineEdit(self)
         self.supplier_input = QLineEdit(self)
         self.entry_date_input = QDateEdit(self)
@@ -536,9 +536,15 @@ class SearchProductDialog(QDialog):
         self.category_filter = QComboBox(self)
         self.category_filter.addItem("Todas las Categorías")
         self.category_filter.addItem("Papelería")
-        self.category_filter.addItem("Computación")
-        self.category_filter.addItem("Muebles")
+        self.category_filter.addItem("Construcción")
+        self.category_filter.addItem("Mobiliario")
         self.category_filter.addItem("Herramienta")
+        self.category_filter.addItem("Plomería / Fontanería")
+        self.category_filter.addItem("Seguridad Industrial / Proteccion Civil")
+        self.category_filter.addItem("Tecnología / Electrónica")
+        self.category_filter.addItem("Limpieza / Mantenimiento")
+        self.category_filter.addItem("Repuestos y consumibles")
+        self.category_filter.addItem("Otra")
         self.category_filter.currentIndexChanged.connect(self.update_search_results)
 
         # Tabla para mostrar los productos
