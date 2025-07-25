@@ -840,14 +840,26 @@ class ExportReportDialog(QDialog):
         query = 'SELECT * FROM products'
         df = pd.read_sql_query(query, self.parent().conn)
 
-        # Cambiar los encabezados a español y asegurarnos de que hay 9 columnas
-        df.columns = ["ID", "Nombre", "Descripción", "Código", "Categoría", "Ubicación", "Proveedor", "Fecha de Entrada", "Cantidad","Unidad Medida"]
+        # Cambiar nombres de columnas
+        df.columns = ["ID", "Nombre", "Descripción", "Código", "Categoría", "Ubicación", "Proveedor", "Fecha de Entrada", "Cantidad", "Unidad Medida", "Disponible"]
 
+        # Abrir diálogo para guardar archivo
         filename, _ = QFileDialog.getSaveFileName(self, "Guardar Reporte", "", "Excel Files (*.xlsx)")
 
         if filename:
-           df.to_excel(filename, index=False)
-           QMessageBox.information(self, 'Éxito', 'Reporte de Inventario General generado exitosamente.')
+            try:
+                # Crear el archivo Excel con múltiples hojas (una por categoría)
+                with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
+                    # Agrupar por categoría
+                    for category, group_df in df.groupby("Categoría"):
+                        # Escribir cada categoría en una hoja diferente
+                        sheet_name = category[:31]  # Excel no permite nombres de hoja >31 caracteres
+                        group_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                
+                QMessageBox.information(self, 'Éxito', 'Reporte de Inventario General generado exitosamente.')
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Ocurrió un error al generar el reporte: {str(e)}')
+
 
     def export_movements_report(self, start_date=None, end_date=None):
         # Modificar la consulta para incluir el nombre del producto
